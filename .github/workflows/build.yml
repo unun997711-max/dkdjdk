@@ -1,0 +1,1239 @@
+name: Build Ilarion
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Write game files
+        run: |
+          mkdir -p www
+          cat > www/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="ar">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+          <title>ILARION</title>
+          <style>
+          *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;touch-action:none}
+          html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:'Noto Naskh Arabic','Droid Arabic Naskh',Tahoma,sans-serif;color:#fff}
+          #cv{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.78vh);height:min(56.25vw,100vh);image-rendering:pixelated;image-rendering:crisp-edges;background:#000}
+          .btn{position:fixed;width:64px;height:64px;border-radius:50%;border:3px solid rgba(255,255,255,.55);background:rgba(20,20,40,.45);color:#fff;font-size:15px;display:none;align-items:center;justify-content:center;font-weight:bold;text-shadow:0 0 4px #000;z-index:5}
+          .btn.on{background:rgba(80,130,255,.6)}
+          #bl{left:14px;bottom:24px}
+          #br{left:96px;bottom:24px}
+          #jump{right:112px;bottom:30px}
+          #atk{right:20px;bottom:22px;width:80px;height:80px;font-size:18px}
+          #dash{right:22px;bottom:112px}
+          #sp{right:108px;bottom:104px}
+          #dlg{position:fixed;left:3%;right:3%;bottom:10px;display:none;direction:rtl;background:rgba(6,6,18,.93);border:3px solid #7aa8ff;padding:10px 12px;z-index:20;min-height:96px}
+          #dport{width:76px;height:76px;float:right;margin-left:12px;image-rendering:pixelated;border:2px solid #7aa8ff;background:#111}
+          #dname{color:#ffd96a;font-weight:bold;font-size:16px;margin-bottom:4px}
+          #dtext{font-size:17px;line-height:1.55}
+          #dnext{position:absolute;left:10px;bottom:4px;font-size:12px;color:#8fb4ff}
+          #title{position:fixed;inset:0;background:radial-gradient(#3a0a18,#05010a);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:30;text-align:center}
+          #title h1{font-size:64px;letter-spacing:10px;margin:0;color:#f2f4ff;text-shadow:0 0 18px #3a8cff,4px 4px 0 #000}
+          #title h2{font-size:18px;margin:6px 0 22px;color:#ffb0b8;font-weight:normal}
+          #title .s{font-size:14px;color:#9fb0e0;margin-top:16px}
+          #startBtn{font-size:22px;padding:12px 44px;background:#10102a;color:#fff;border:3px solid #7aa8ff;font-family:inherit}
+          #card{position:fixed;inset:0;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:25;text-align:center;direction:rtl}
+          #card .a{font-size:15px;color:#7aa8ff;letter-spacing:4px}
+          #card .b{font-size:30px;margin-top:8px;color:#fff}
+          #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .6s;z-index:22}
+          </style>
+          </head>
+          <body>
+          <canvas id="cv" width="480" height="270"></canvas>
+          <div class="btn" id="bl" data-k="left">◀</div>
+          <div class="btn" id="br" data-k="right">▶</div>
+          <div class="btn" id="jump" data-k="jump">قفز</div>
+          <div class="btn" id="atk" data-k="atk">ضربة</div>
+          <div class="btn" id="dash" data-k="dash">اندفاع</div>
+          <div class="btn" id="sp" data-k="sp">قوة</div>
+          <div id="dlg"><canvas id="dport" width="48" height="48"></canvas><div id="dname"></div><div id="dtext"></div><div id="dnext">▼ المس للمتابعة</div></div>
+          <div id="card"><div class="a" id="cardA"></div><div class="b" id="cardB"></div></div>
+          <div id="fade"></div>
+          <div id="title"><h1>ILARION</h1><h2>إيلاريون — سجلات العالم الأخير</h2><button id="startBtn">ابدأ</button><div class="s">الموسم الأول: الوريث الذي كرهته الآلهة</div></div>
+          <script src="sprites.js"></script>
+          <script src="engine.js"></script>
+          <script src="story.js"></script>
+          <script src="game.js"></script>
+          </body>
+          </html>
+          EOF
+          cat > www/sprites.js <<'EOF'
+          'use strict';
+          const W=480,H=270,GY=214;
+          const AT0=-2.2,AT1=0.7;
+          const PAL={k:'#0a0a12',w:'#f2f4ff',W:'#aab4dc',f:'#f1c9a5',F:'#c28a70',b:'#4fb0ff',
+          c:'#1b1b27',C:'#38384f',g:'#0d0d14',r:'#c4202f',s:'#d6dff5',S:'#7f8bb0',
+          d:'#15151f',B:'#3aa0ff',p:'#12121c',o:'#2a2a38',z:'#8fa291',Z:'#4e5c54',
+          y:'#e0d8b4',e:'#ff3a3a',m:'#2a0c14',h:'#6b4a3a',H:'#3d2a22'};
+          const S={};
+          function mk(rows,rec){
+            const h=rows.length,w=rows[0].length,cv=document.createElement('canvas');
+            cv.width=w;cv.height=h;const x=cv.getContext('2d');
+            for(let j=0;j<h;j++)for(let i=0;i<w;i++){
+              let ch=rows[j][i];if(rec&&rec[ch])ch=rec[ch];
+              if(ch==='.'||!PAL[ch])continue;
+              x.fillStyle=PAL[ch];x.fillRect(i,j,1,1);
+            }
+            return cv;
+          }
+          function mkc(w,h){
+            const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+            const c=cv.getContext('2d');c.imageSmoothingEnabled=false;c.cv=cv;return c;
+          }
+          function rng(seed){let s=seed>>>0;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
+          function lerp(a,b,t){return a+(b-a)*t;}
+          function hx(h){return[parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)];}
+          function mix(a,b,t){const A=hx(a),B=hx(b);return 'rgb('+[0,1,2].map(i=>Math.round(A[i]+(B[i]-A[i])*t)).join(',')+')';}
+          function ln(c,x0,y0,x1,y1,w){
+            const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0;
+            for(let i=0;i<=n;i++){const t=n?i/n:0;
+              c.fillRect(Math.round(x0+(x1-x0)*t-w/2),Math.round(y0+(y1-y0)*t-w/2),w,w);}
+          }
+          function drawShear(c,img,x,y,swing){
+            const h=img.height,w=img.width;
+            for(let r=0;r<h;r++){const o=Math.round(swing*(r/(h-1)));c.drawImage(img,0,r,w,1,x+o,y+r,w,1);}
+          }
+
+          /* ---------- ليفاي: شعر أبيض، عينان زرقاوان، معطف أسود ---------- */
+          const LHEAD=[
+          '..kkkkkkk...',
+          '.kwwwwwwwkk.',
+          'kwwWwwwwwwwk',
+          'kwwwwWwwwwwk',
+          'kWwwwffffffk',
+          '.kwwfffffffk',
+          '.kwfffbffbfk',
+          '..kfffffffFk',
+          '..kfffFFffk.',
+          '...kkffffkk.',
+          '.....kkkk...'];
+          const LTORSO=[
+          '...kkccccck...',
+          '..kcccCCcccck.',
+          '.kcccCccccccgk',
+          '.kccCcccccccgk',
+          'kcccCcccccccck',
+          'kccCccccccccck',
+          'kcccccccccccck',
+          'kcCcccccccccck',
+          'kcccccccccccck',
+          'kccccccccppppk',
+          'kkcccccpppppkk'];
+          const LLEG=[
+          '.kpppk.',
+          '.kpppk.',
+          '.kpppk.',
+          '.kpppk.',
+          '.kpppk.',
+          '.kpppk.',
+          '.kooook',
+          '.kkkkkk'];
+          const LTAIL=[
+          '.kcccc',
+          'kccCcc',
+          'kcccc.',
+          'kccCc.',
+          'kccc..',
+          'kcc...',
+          'kk....'];
+          const LARM=[
+          'kcccgk',
+          'kccggk',
+          '.kkkk.'];
+          const LSWORD=[
+          '....kkkkkkkkkkkkkkk.',
+          'kkkkBBBBBBBBBBBBBBBk',
+          'rrkkdddddddddddddddk',
+          '.kkkkkkkkkkkkkkkkkk.'];
+
+          /* ---------- سايركس الموتى (THE HOLLOW) ---------- */
+          const HBODY=[
+          '......kkkkkk........',
+          '.....kzzzzzzk.......',
+          '....kzzZzzzzzk......',
+          '....kzeezzeezk......',
+          '....kzzzzzzzzk......',
+          '.....kzmmmmzk.......',
+          '.....kkyyyykk.......',
+          '......kzzzzk........',
+          '....kkzzzzzzkk......',
+          '...kzzzzZzzzzzk.....',
+          '..kzzZzzzzyzzzzk....',
+          '..kzzzzzyyzzZzzk....',
+          '..kzZzzzzzzzzzzk....',
+          '...kzzzzZZzzzzk.....',
+          '...kkzzzzzzzzkk.....',
+          '....kkzzzzzzkk......'];
+          const HARM=[
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kzzk',
+          '.kZzk',
+          '.kzzk',
+          'kyyyk',
+          'y.y.y'];
+
+          function initSprites(){
+            S.lhead=mk(LHEAD);S.ltorso=mk(LTORSO);S.lleg=mk(LLEG);
+            S.ltail=mk(LTAIL);S.larm=mk(LARM);S.lsword=mk(LSWORD);
+            S.hbody=mk(HBODY);S.hleg=mk(LLEG,{p:'Z',o:'z'});S.harm=mk(HARM);
+          }
+
+          /* ---------- رسم ليفاي (القدمان عند y) ---------- */
+          function drawLevi(c,x,y,d,st,t,ap,fl){
+            c.save();c.translate(Math.round(x),Math.round(y));
+            if(st==='dead'){c.scale(d,1);c.rotate(-Math.min(1,ap)*1.5);}else c.scale(d,1);
+            if(fl)c.filter='brightness(3)';
+            let bob=0,sw=0,ls=0,tl=0,ang=0.4;
+            if(st==='idle'){bob=Math.sin(t*0.07)>0.2?1:0;tl=Math.sin(t*0.09)*1.5;ang=0.4;}
+            else if(st==='run'){const p=t*0.3;sw=Math.sin(p)*5;bob=Math.cos(p*2)>0?0:1;ls=2;tl=-4+Math.sin(p*2);ang=0.1+Math.sin(p)*0.25;}
+            else if(st==='jump'){tl=-3;ang=-0.5;}
+            else if(st==='dash'){ls=4;tl=-7;ang=0.1;}
+            else if(st==='atk'){ls=Math.round(ap*3);tl=-3;ang=AT0+Math.min(1,ap*1.15)*(AT1-AT0);}
+            else if(st==='hurt'){ls=-3;tl=2;ang=0.6;}
+            const lift=v=>v>2?1:0;
+            drawShear(c,S.ltail,-13,-16+bob,tl);
+            if(st==='jump'){
+              drawShear(c,S.lleg,-7,-9,-4);
+              drawShear(c,S.lleg,-1,-10,5);
+            }else{
+              drawShear(c,S.lleg,-6,-8-lift(-sw),-sw);
+            }
+            c.drawImage(S.ltorso,-8+ls,-18+bob);
+            if(st!=='jump')drawShear(c,S.lleg,-1,-8-lift(sw),sw);
+            c.drawImage(S.lhead,-6+ls,-26+bob);
+            c.save();c.translate(ls,-15+bob);c.rotate(ang);
+            c.drawImage(S.larm,-1,-1);c.drawImage(S.lsword,4,-2);
+            c.restore();
+            c.restore();
+          }
+          /* هلال الضربة بالبكسل (أبيض - أزرق - منقط) */
+          function slashFx(c,x,y,d,ap){
+            if(ap<0.12||ap>1)return;
+            const a0=AT0,a1=AT0+Math.min(1,ap*1.15)*(AT1-AT0);
+            const fade=1-Math.max(0,ap-0.75)*4;
+            c.save();c.translate(Math.round(x),Math.round(y-15));c.scale(d,1);
+            for(let a=a0;a<a1;a+=0.03){
+              const u=(a-a0)/(a1-a0+0.001);
+              const wd=Math.sin(Math.PI*u)*8*Math.max(0,fade);
+              for(let r=23;r<23+wd;r++){
+                const px=Math.round(Math.cos(a)*r),py=Math.round(Math.sin(a)*r*0.9);
+                const k=(r-23)/wd;
+                c.fillStyle=k<0.35?'#ffffff':k<0.7?'#9fd8ff':(((px+py)&1)?'#3a8cff':'#1b4fb5');
+                c.fillRect(px,py,1,1);
+              }
+            }
+            c.restore();
+          }
+
+          /* ---------- رسم الموتى ---------- */
+          function drawHollow(c,x,y,d,st,t,ap,fl){
+            c.save();c.translate(Math.round(x),Math.round(y));c.scale(d,1);
+            if(fl)c.filter='brightness(3)';
+            const walk=st==='walk';
+            const sw=walk?Math.sin(t*0.2)*4:0;
+            const bob=walk?(Math.abs(Math.sin(t*0.2))>0.6?1:0):Math.round(Math.sin(t*0.07));
+            let th=0.08+0.08*Math.sin(t*0.05);
+            if(walk)th=0.3+Math.sin(t*0.2)*0.4;
+            if(st==='atk')th=lerp(0.9,-1.9,Math.min(1,ap));
+            drawShear(c,S.hleg,-6,-8,-sw);
+            c.save();c.translate(-5,-16+bob);c.rotate(-th*0.6);c.drawImage(S.harm,-2,0);c.restore();
+            c.drawImage(S.hbody,-10,-22+bob);
+            drawShear(c,S.hleg,-1,-8,sw);
+            c.save();c.translate(3,-16+bob);c.rotate(-th);c.drawImage(S.harm,-2,0);c.restore();
+            c.restore();
+          }
+
+          /* ---------- الخلفيات: سماء حمراء، شقوق، مدينة مدمرة، أشجار ميتة ---------- */
+          const THEMES=[
+          {top:'#14040c',bot:'#8a1c2a',far:'#1c0812',mid:'#12060c',rim:'#6a1d30',ground:['#2a1a22','#1c1016','#4a2c36','#7a3a46'],eclipse:true,cracks:6},
+          {top:'#1a0408',bot:'#b02a2a',far:'#240a10',mid:'#150709',rim:'#7a2630',ground:['#2e1b1b','#1f1010','#4e2a2a','#8a4040'],eclipse:false,cracks:8},
+          {top:'#0e0818',bot:'#5a2a6a',far:'#150c24',mid:'#0c0616',rim:'#5a3a8a',ground:['#201a2e','#140f20','#3a2e50','#6a5a9a'],eclipse:true,cracks:5},
+          {top:'#050208',bot:'#401020',far:'#0e0510',mid:'#07030a',rim:'#4a1a3a',ground:['#1a1018','#100a10','#2e2030','#5a3050'],eclipse:true,cracks:12}];
+
+          function buildSky(th,r){
+            const c=mkc(W,H),n=16;
+            for(let i=0;i<n;i++){
+              const y0=Math.floor(i*GY/n),y1=Math.floor((i+1)*GY/n);
+              c.fillStyle=mix(th.top,th.bot,i/(n-1));c.fillRect(0,y0,W,y1-y0);
+              if(i<n-1){
+                c.fillStyle=mix(th.top,th.bot,(i+1)/(n-1));
+                for(let x=0;x<W;x++){
+                  if((x&1)===0)c.fillRect(x,y1-1,1,1);
+                  if((x&3)===0)c.fillRect(x+1,y1-2,1,1);
+                }
+              }
+            }
+            c.fillStyle=mix(th.bot,'#000000',0.3);c.fillRect(0,GY,W,H-GY);
+            if(th.eclipse){
+              const cx=350,cy=62,R=30;
+              for(let j=-R-3;j<=R+3;j++)for(let i=-R-3;i<=R+3;i++){
+                const d=Math.sqrt(i*i+j*j);
+                if(d<R){c.fillStyle=(d>R-3&&((i+j)&1))?'#3a0a14':'#07020a';c.fillRect(cx+i,cy+j,1,1);}
+                else if(d<R+3&&(((i+j)&1)||d<R+1.5)){c.fillStyle=d<R+1.5?'#ff5a50':'#a02a38';c.fillRect(cx+i,cy+j,1,1);}
+              }
+            }
+            for(let k=0;k<th.cracks;k++){
+              let x=r()*W,y=0;const dir=r()<0.5?-1:1;
+              while(y<GY*0.75){
+                const nx=x+dir*(r()*10-3),ny=y+4+r()*8;
+                c.fillStyle='#ff6a5a';ln(c,x+2,y,nx+2,ny,1);
+                c.fillStyle='#000';ln(c,x,y,nx,ny,2);
+                x=nx;y=ny;if(r()<0.12)break;
+              }
+            }
+            return c.cv;
+          }
+          function buildFar(th,r){
+            const c=mkc(960,GY);let x=0;
+            while(x<960){
+              const w=14+(r()*22|0),h=34+(r()*80|0),top=GY-h;
+              c.fillStyle=th.far;c.fillRect(x,top,w,h);
+              for(let i=0;i<w;i++){if(r()<0.5)c.clearRect(x+i,top,1,(r()*5)|0);}
+              for(let wy=top+8;wy<GY-4;wy+=6)for(let wx=x+3;wx<x+w-3;wx+=5){
+                const q=r();
+                if(q<0.07){c.fillStyle='#ffa94a';c.fillRect(wx,wy,2,3);}
+                else if(q<0.17){c.fillStyle='rgba(0,0,0,0.45)';c.fillRect(wx,wy,2,3);}
+              }
+              x+=w+((r()*4)|0)-2;
+            }
+            c.globalCompositeOperation='source-atop';c.fillStyle=th.bot;
+            for(let y=GY-34;y<GY;y++){
+              const dens=(y-(GY-34))/34;
+              for(let xx=0;xx<960;xx++){if(((xx*37+y*61)%31)/31<dens)c.fillRect(xx,y,1,1);}
+            }
+            return c.cv;
+          }
+          function tree(c,x,y,len,ang,w,r,col,rim){
+            if(len<5||w<1)return;
+            const x1=x+Math.cos(ang)*len,y1=y+Math.sin(ang)*len;
+            c.fillStyle=rim;ln(c,x-1,y,x1-1,y1,Math.ceil(w));
+            c.fillStyle=col;ln(c,x,y,x1,y1,Math.ceil(w));
+            tree(c,x1,y1,len*0.72,ang-0.45-r()*0.4,w*0.7,r,col,rim);
+            if(r()<0.85)tree(c,x1,y1,len*0.7,ang+0.4+r()*0.4,w*0.7,r,col,rim);
+          }
+          function buildMid(th,r){
+            const c=mkc(960,GY);let x=30;
+            while(x<930){
+              if(r()<0.6){
+                tree(c,x,GY,26+r()*14,-Math.PI/2+(r()-0.5)*0.3,4,r,th.mid,th.rim);
+              }else{
+                const w=18+(r()*22|0),h=26+(r()*40|0);
+                c.fillStyle=th.rim;c.fillRect(x-1,GY-h,w,h);
+                c.fillStyle=th.mid;c.fillRect(x,GY-h,w,h);
+                for(let i=0;i<w;i++)c.clearRect(x+i,GY-h,1,(r()*6)|0);
+                c.fillStyle=th.rim;
+                for(let by=GY-h+6;by<GY;by+=5)c.fillRect(x+2,by,w-3,1);
+              }
+              x+=70+r()*80;
+            }
+            return c.cv;
+          }
+          function buildTile(th,r){
+            const gh=H-GY,c=mkc(32,gh),g=th.ground;
+            c.fillStyle=g[0];c.fillRect(0,0,32,gh);
+            c.fillStyle=g[3];c.fillRect(0,0,32,1);
+            c.fillStyle=g[2];c.fillRect(0,1,32,2);
+            c.fillStyle=g[1];c.fillRect(0,3,32,1);
+            for(let i=0;i<110;i++){
+              c.fillStyle=r()<0.5?g[1]:g[2];
+              c.fillRect((r()*32)|0,4+((r()*(gh-4))|0),1,1);
+            }
+            c.fillStyle=g[1];
+            for(let y=14,k=0;y<gh;y+=14,k++){
+              c.fillRect(0,y,32,1);
+              c.fillRect(k&1?16:0,y-14>3?y-14:3,1,14);
+            }
+            for(let s=0;s<3;s++){
+              const sx=(r()*26)|0,sy=6+((r()*(gh-12))|0);
+              c.fillStyle=g[1];c.fillRect(sx,sy,6,4);
+              c.fillStyle=g[2];c.fillRect(sx+1,sy,4,3);
+              c.fillStyle=g[3];c.fillRect(sx+1,sy,3,1);
+            }
+            return c.cv;
+          }
+          function buildStage(ti,seed){
+            const th=THEMES[ti%THEMES.length],r=rng(seed*977+13);
+            return {th:th,sky:buildSky(th,r),far:buildFar(th,r),mid:buildMid(th,r),tile:buildTile(th,r)};
+          }
+          function drawBG(c,B,cam,t){
+            c.drawImage(B.sky,0,0);
+            const fx=Math.round(-((cam*0.15)%960));
+            c.drawImage(B.far,fx,0);c.drawImage(B.far,fx+960,0);
+            const mx=Math.round(-((cam*0.4)%960));
+            c.drawImage(B.mid,mx,0);c.drawImage(B.mid,mx+960,0);
+            const gx=-(cam%32);
+            for(let x=gx;x<W;x+=32)c.drawImage(B.tile,Math.round(x),GY);
+          }
+          EOF
+          cat > www/engine.js <<'EOF'
+          'use strict';
+          const $=id=>document.getElementById(id);
+          const cv=$('cv'),ctx=cv.getContext('2d');ctx.imageSmoothingEnabled=false;
+          const G={mode:'title',dlg:null,boss:null,maxhp:10};
+          let L=null,P=null,AC=null,EID=1;
+          const ET={};
+          const KEY={left:0,right:0,jump:0,atk:0,dash:0,sp:0},PRESS={};
+
+          /* ---------- الإدخال (لمس متعدد + كيبورد) ---------- */
+          function setKey(k,v){if(v&&!KEY[k])PRESS[k]=1;KEY[k]=v?1:0;}
+          function clearPress(){for(const k in PRESS)PRESS[k]=0;}
+          function bindInput(){
+            document.querySelectorAll('.btn').forEach(b=>{
+              const k=b.dataset.k;
+              const on=e=>{e.preventDefault();setKey(k,1);b.classList.add('on');try{b.setPointerCapture(e.pointerId);}catch(_){}};
+              const off=e=>{e.preventDefault();setKey(k,0);b.classList.remove('on');};
+              b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);
+              b.addEventListener('pointercancel',off);b.addEventListener('lostpointercapture',off);
+            });
+            const map={ArrowLeft:'left',a:'left',ArrowRight:'right',d:'right',ArrowUp:'jump',w:'jump',' ':'jump',j:'atk',k:'sp',l:'dash',Shift:'dash'};
+            addEventListener('keydown',e=>{const k=map[e.key];if(k)setKey(k,1);});
+            addEventListener('keyup',e=>{const k=map[e.key];if(k)setKey(k,0);});
+            $('dlg').addEventListener('pointerdown',e=>{e.preventDefault();advance();});
+          }
+          function showControls(on){document.querySelectorAll('.btn').forEach(b=>b.style.display=on?'flex':'none');}
+
+          /* ---------- الصوت (شيبتيون) ---------- */
+          function initAudio(){if(AC)return;try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+          function tone(f,d,type,v,sl){
+            if(!AC)return;const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;
+            o.type=type||'square';o.frequency.setValueAtTime(f,t);
+            if(sl)o.frequency.exponentialRampToValueAtTime(Math.max(20,sl),t+d);
+            g.gain.setValueAtTime(v||0.1,t);g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+            o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d);
+          }
+          function noise(d,v){
+            if(!AC)return;const n=Math.floor(AC.sampleRate*d),b=AC.createBuffer(1,n,AC.sampleRate),a=b.getChannelData(0);
+            for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*(1-i/n);
+            const s=AC.createBufferSource(),g=AC.createGain();s.buffer=b;g.gain.value=v||0.1;
+            s.connect(g);g.connect(AC.destination);s.start();
+          }
+          function sfx(n){
+            switch(n){
+              case 'slash':noise(0.09,0.12);tone(600,0.08,'sawtooth',0.05,200);break;
+              case 'hit':tone(160,0.1,'square',0.12,50);noise(0.06,0.1);break;
+              case 'jump':tone(260,0.14,'square',0.06,620);break;
+              case 'hurt':tone(300,0.25,'sawtooth',0.12,70);break;
+              case 'boom':noise(0.5,0.25);tone(90,0.4,'sawtooth',0.15,30);break;
+              case 'sp':tone(200,0.4,'sawtooth',0.1,1200);noise(0.2,0.08);break;
+              case 'dash':noise(0.12,0.08);break;
+              case 'dlg':tone(520,0.03,'square',0.02);break;
+            }
+          }
+          let MU=null,mstep=0;
+          const TR=[
+          {bpm:70,bass:[110,0,0,0,87.3,0,0,0,98,0,0,0,82.4,0,0,0],lead:[0,0,440,0,0,0,523,0,0,0,392,0,0,0,330,0]},
+          {bpm:130,bass:[110,110,0,110,110,0,110,0,87.3,87.3,0,87.3,98,98,0,98],lead:[440,0,523,0,659,0,523,0,440,0,392,0,349,0,392,0]}];
+          function music(i){
+            if(MU){clearInterval(MU);MU=null;}
+            if(i<0||!AC)return;const T=TR[i];mstep=0;
+            MU=setInterval(()=>{
+              const s=mstep++%16;
+              if(T.bass[s])tone(T.bass[s],0.16,'triangle',0.09);
+              if(T.lead[s])tone(T.lead[s],0.12,'square',0.035);
+              if(i===1&&s%2===0)noise(0.03,0.04);
+            },60000/T.bpm/4);
+          }
+
+          /* ---------- جسيمات ---------- */
+          function burst(x,y,n,cols,sp,g){
+            for(let i=0;i<n;i++){
+              const a=Math.random()*6.28,s=Math.random()*sp;
+              L.pa.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,life:(20+Math.random()*20)|0,col:cols[(Math.random()*cols.length)|0],g:g===undefined?0.15:g});
+            }
+          }
+          function ambient(){
+            if(Math.random()<0.5)L.pa.push({x:L.cam+Math.random()*W,y:GY+Math.random()*10,vx:(Math.random()-0.5)*0.3,vy:-0.4-Math.random()*0.5,life:90+((Math.random()*60)|0),col:Math.random()<0.5?'#ff7a4a':'#ffb070',g:-0.002});
+          }
+          function updParticles(){
+            for(const q of L.pa){q.x+=q.vx;q.y+=q.vy;q.vy+=q.g;q.life--;}
+            L.pa=L.pa.filter(q=>q.life>0);
+          }
+
+          /* ---------- الأعداء ---------- */
+          function spawnEnemy(type,x,y){
+            const t=ET[type];
+            const e={id:EID++,type:type,x:x,y:y===undefined?GY:y,vx:0,vy:0,d:-1,hp:t.hp,maxhp:t.hp,t:0,st:'walk',at:0,fl:0,cd:50,dead:false,dt:0,kb:0};
+            if(t.init)t.init(e);
+            L.en.push(e);return e;
+          }
+          function hurtEnemy(e,dmg,kx){
+            if(e.dead||e.inv)return false;
+            const t=ET[e.type];
+            e.hp-=dmg;e.fl=6;e.kb=(t.heavy?0.3:1)*kx;L.hs=3;sfx('hit');
+            burst(e.x,e.y-14,8,['#ff5a6a','#7a1a3a','#fff'],2.4);
+            P.sp=Math.min(100,P.sp+8);
+            if(e.hp<=0){
+              e.dead=true;e.dt=0;
+              burst(e.x,e.y-14,26,['#c43a5a','#4e5c54','#e0d8b4','#fff'],3.4);
+              sfx(t.heavy?'boom':'hit');L.shake=t.heavy?14:4;
+              if(t.onDie)t.onDie(e);
+            }
+            return true;
+          }
+          function updEnemies(){
+            for(const e of L.en){
+              e.t++;if(e.fl>0)e.fl--;
+              if(e.dead){e.dt++;e.x+=e.kb;e.kb*=0.9;continue;}
+              if(Math.abs(e.kb)>0.1){e.x+=e.kb;e.kb*=0.8;}
+              ET[e.type].ai(e);
+              for(const o of L.en)if(o!==e&&!o.dead&&Math.abs(o.x-e.x)<9)e.x+=e.x<o.x?-0.4:0.4;
+            }
+            L.en=L.en.filter(e=>!(e.dead&&e.dt>34));
+          }
+          ET.hollow={hp:4,w:12,h:26,spd:0.55,
+            ai(e){
+              const dx=P.x-e.x,ad=Math.abs(dx);
+              if(P.dead){e.st='walk';return;}
+              if(e.st==='atk'){
+                e.at++;
+                if(e.at===16&&ad<34&&Math.abs(P.y-e.y)<26)hurtPlayer(1,e.x);
+                if(e.at>=30){e.st='walk';e.at=0;e.cd=60;}
+              }else{
+                e.d=dx>0?1:-1;
+                if(ad>26)e.x+=e.d*ET.hollow.spd;
+                if(e.cd>0)e.cd--;else if(ad<32){e.st='atk';e.at=0;}
+              }
+            },
+            draw(c,e,cam){drawHollow(c,e.x-cam,e.y,e.d,e.st==='atk'?'atk':'walk',e.t,e.at/30,e.fl>0);}};
+          ET.dummy={hp:1,w:12,h:17,
+            init(e){e.dx=2.2;},
+            ai(e){e.x+=e.dx;if(e.x>L.cam+W-30)e.dx=-2.2;if(e.x<L.cam+30)e.dx=2.2;e.d=e.dx>0?1:-1;},
+            draw(c,e,cam){c.drawImage(S.dummy,Math.round(e.x-cam-6),Math.round(e.y-17));}};
+          function drawEnemy(c,e,cam){
+            if(e.dead){c.globalAlpha=Math.max(0,1-e.dt/34);e.fl=e.dt<5?1:0;}
+            ET[e.type].draw(c,e,cam);c.globalAlpha=1;
+          }
+
+          /* ---------- اللاعب (ليفاي) ---------- */
+          function newPlayer(x){
+            return {x:x,y:GY,vy:0,d:1,hp:G.maxhp,maxhp:G.maxhp,sp:0,st:'idle',t:0,at:0,ht:0,dsh:0,dc:0,inv:0,kbx:0,ground:true,hit:{},cmb:0,spw:0,dead:false,dt:0,mv:0};
+          }
+          function hurtPlayer(dmg,fx){
+            const p=P;if(p.dead||p.inv>0||p.dsh>0)return;
+            p.hp-=dmg;p.inv=70;p.ht=14;p.st='hurt';p.at=0;p.kbx=(p.x<fx?-1:1)*3;p.vy=-3;p.ground=false;
+            sfx('hurt');L.shake=6;L.hs=4;
+            burst(p.x,p.y-16,10,['#fff','#3aa0ff','#aab4dc'],2.6);
+            if(p.hp<=0){p.hp=0;p.dead=true;p.dt=0;p.st='dead';}
+          }
+          function updPlayer(){
+            const p=P;p.t++;
+            if(p.dead){p.dt++;if(p.dt===100&&G.onDeath)G.onDeath();return;}
+            if(p.inv>0)p.inv--;if(p.dc>0)p.dc--;
+            const mv=KEY.right-KEY.left;p.mv=mv;
+            if(p.ht>0){p.ht--;p.x+=p.kbx;p.kbx*=0.85;}
+            else if(p.dsh>0){
+              p.dsh--;p.x+=p.d*5;
+              if(p.t%2===0)L.pa.push({x:p.x-p.d*8,y:p.y-8-Math.random()*16,vx:0,vy:0,life:10,col:'#3aa0ff',g:0});
+            }else{
+              if(mv){p.x+=mv*(p.at>0?0.9:1.8);if(p.at===0)p.d=mv;}
+              if(PRESS.jump&&p.ground){p.vy=-7.6;p.ground=false;sfx('jump');}
+              if(PRESS.atk&&p.at===0){p.at=1;p.hit={};p.spw=0;p.cmb++;sfx('slash');}
+              if(PRESS.dash&&p.dc<=0){p.dsh=11;p.dc=40;p.inv=Math.max(p.inv,14);sfx('dash');}
+              if(PRESS.sp&&p.sp>=50&&p.at===0){
+                p.sp-=50;p.at=1;p.hit={};p.spw=1;
+                L.sh.push({x:p.x+p.d*14,y:p.y-14,vx:5*p.d,d:p.d,dmg:4,life:80,own:'p',type:'wave',hit:{}});
+                sfx('sp');L.shake=3;
+              }
+            }
+            if(p.at>0&&p.ht===0){
+              p.at++;const ap=p.at/20;
+              if(!p.spw&&ap>0.3&&ap<0.75){
+                const x0=p.d>0?p.x-4:p.x-40,x1=x0+44;
+                for(const e of L.en){
+                  if(e.dead||p.hit[e.id])continue;
+                  const w=(ET[e.type].w||12)/2,h=ET[e.type].h||26;
+                  if(e.x+w>x0&&e.x-w<x1&&e.y>p.y-34&&e.y-h<p.y+2){p.hit[e.id]=1;hurtEnemy(e,p.cmb%3===0?3:1.5,p.d*3);}
+                }
+              }
+              if(p.at>=20){p.at=0;p.spw=0;}
+            }
+            p.vy+=0.45;p.y+=p.vy;
+            if(p.y>=GY){p.y=GY;p.vy=0;p.ground=true;}else p.ground=false;
+            p.st=p.ht>0?'hurt':p.dsh>0?'dash':p.at>0?'atk':!p.ground?'jump':mv?'run':'idle';
+          }
+
+          /* ---------- المقذوفات ---------- */
+          function updShots(){
+            for(const s of L.sh){
+              s.x+=s.vx;s.life--;
+              if(s.own==='p'){
+                for(const e of L.en){
+                  if(e.dead||s.hit[e.id])continue;
+                  if(Math.abs(e.x-s.x)<(ET[e.type].w||12)/2+6&&e.y>s.y-8&&e.y-(ET[e.type].h||26)<s.y+8){s.hit[e.id]=1;hurtEnemy(e,s.dmg,s.d*4);}
+                }
+              }else if(Math.abs(P.x-s.x)<7&&Math.abs((P.y-14)-s.y)<12){hurtPlayer(s.dmg,s.x);s.life=0;}
+            }
+            L.sh=L.sh.filter(s=>s.life>0&&s.x>L.cam-40&&s.x<L.cam+W+40);
+          }
+          function drawShot(c,s,cam){
+            const x=Math.round(s.x-cam),y=Math.round(s.y);
+            if(s.type==='wave'){
+              for(let i=-10;i<=10;i++){
+                const ox=Math.round(-(i*i)/12)*s.d;
+                for(let k=0;k<4;k++){
+                  c.fillStyle=k<1?'#fff':k<2?'#9fd8ff':'#3a8cff';
+                  c.fillRect(x+ox-k*s.d*2,y+i,2,1);
+                }
+              }
+            }else c.drawImage(S.orb,x-3,y-3);
+          }
+
+          /* ---------- الحوارات وبطاقات الحلقات ---------- */
+          function say(lines,cb){
+            G.dlg={lines:lines,i:0,cb:cb,tw:0,full:false};
+            G.mode='dlg';$('dlg').style.display='block';showControls(false);setLine();
+          }
+          function setLine(){
+            const d=G.dlg,l=d.lines[d.i];d.tw=0;d.full=false;
+            const ch=window.CHAR&&CHAR[l.w];
+            $('dname').textContent=l.n||(ch?ch.n:'');
+            $('dtext').textContent='';
+            $('dtext').style.fontStyle=l.w==='nar'?'italic':'normal';
+            const pc=$('dport'),pg=pc.getContext('2d');pg.clearRect(0,0,48,48);
+            const show=window.drawPortrait&&l.w!=='nar';
+            pc.style.visibility=show?'visible':'hidden';
+            if(show)drawPortrait(pg,l.w);
+          }
+          function tickDlg(){
+            const d=G.dlg;if(!d||d.full)return;
+            d.tw+=0.8;const l=d.lines[d.i],n=Math.floor(d.tw);
+            if(n%4===0)sfx('dlg');
+            $('dtext').textContent=l.t.slice(0,n);
+            if(n>=l.t.length){d.full=true;$('dtext').textContent=l.t;}
+          }
+          function advance(){
+            const d=G.dlg;if(!d)return;
+            if(!d.full){d.full=true;$('dtext').textContent=d.lines[d.i].t;return;}
+            d.i++;
+            if(d.i>=d.lines.length){
+              G.dlg=null;$('dlg').style.display='none';G.mode='play';showControls(true);
+              if(d.cb)d.cb();
+            }else setLine();
+          }
+          function showCard(a,b,ms,cb){
+            G.mode='card';showControls(false);
+            $('cardA').textContent=a;$('cardB').textContent=b;$('card').style.display='flex';
+            setTimeout(()=>{$('card').style.display='none';G.mode='play';showControls(true);if(cb)cb();},ms);
+          }
+          function fade(on){$('fade').style.opacity=on?1:0;}
+          G.onDeath=()=>showCard('GAME OVER','سقط ليفاي... لكن القصة لم تنتهِ',2200,()=>retryLevel());
+
+          /* ---------- المراحل ---------- */
+          function startLevel(def){
+            L={def:def,B:buildStage(def.theme,def.seed||1),len:def.len,cam:0,
+              spawns:(def.spawns||[]).slice().sort((a,b)=>a.x-b.x),si:0,
+              locks:(def.locks||[]).slice().sort((a,b)=>a.x-b.x),lock:null,
+              trig:(def.trig||[]).map(t=>({x:t.x,fn:t.fn,done:false})),
+              en:[],sh:[],pa:[],t:0,shake:0,hs:0,ended:false};
+            G.boss=null;P=newPlayer(def.px||30);
+            if(def.music!==undefined)music(def.music);
+            G.mode='play';showControls(true);
+            if(def.onStart)def.onStart();
+          }
+          function retryLevel(){startLevel(L.def);}
+
+          function update(){
+            if(!L){clearPress();return;}
+            L.t++;ambient();updParticles();
+            if(G.mode==='dlg'){tickDlg();if(PRESS.atk)advance();clearPress();return;}
+            if(G.mode!=='play'){clearPress();return;}
+            if(L.hs>0){L.hs--;return;}
+            updPlayer();updEnemies();updShots();
+            const nl=L.lock?L.lock.x:(L.locks.length?L.locks[0].x:1e9);
+            const maxc=Math.min(L.len-W,nl);
+            L.cam+=((P.x-W*0.4)-L.cam)*0.12;
+            L.cam=Math.max(0,Math.min(maxc,L.cam));
+            P.x=Math.max(L.cam+8,Math.min(L.cam+W-8,P.x));
+            while(L.si<L.spawns.length&&L.spawns[L.si].x<L.cam+W+30){
+              const s=L.spawns[L.si++];spawnEnemy(s.type,s.x,s.y);
+            }
+            if(!L.lock&&L.locks.length&&L.cam>=L.locks[0].x-2){
+              L.lock=L.locks.shift();
+              L.lock.wave.forEach((w,i)=>{
+                const e=spawnEnemy(w.type,i%2?L.cam-20-(w.dx||0):L.cam+W+20+(w.dx||0),w.y);
+                if(w.boss){e.boss=true;G.boss=e;}
+              });
+              if(L.lock.onStart)L.lock.onStart();
+            }
+            if(L.lock&&L.en.every(e=>e.dead)){
+              const lk=L.lock;L.lock=null;if(lk.onClear)lk.onClear();
+            }
+            for(const tr of L.trig)if(!tr.done&&P.x>=tr.x){tr.done=true;tr.fn();}
+            if(!L.ended&&!L.lock&&!L.locks.length&&L.si>=L.spawns.length&&L.en.every(e=>e.dead)&&P.x>L.len-40&&!P.dead){
+              L.ended=true;if(L.def.onEnd)L.def.onEnd();
+            }
+            clearPress();
+          }
+
+          /* ---------- الرسم ---------- */
+          function drawPlayer(c,cam){
+            const p=P;
+            if(p.inv>0&&!p.dead&&((p.inv>>2)&1)&&p.ht===0)return;
+            const ap=p.st==='dead'?p.dt/25:p.at/20;
+            drawLevi(c,p.x-cam,p.y,p.d,p.st,p.t,ap,p.ht>8);
+            if(p.st==='atk'&&!p.spw)slashFx(c,p.x-cam,p.y,p.d,ap);
+          }
+          function bar(c,x,y,w,h,f,col,hi){
+            c.fillStyle='#000';c.fillRect(x-1,y-1,w+2,h+2);
+            c.fillStyle='#2a1a2a';c.fillRect(x,y,w,h);
+            const fw=Math.max(0,Math.round(w*Math.max(0,Math.min(1,f))));
+            c.fillStyle=col;c.fillRect(x,y,fw,h);c.fillStyle=hi;c.fillRect(x,y,fw,1);
+          }
+          function drawHUD(c){
+            c.drawImage(S.lhead,5,5);
+            bar(c,22,7,90,7,P.hp/P.maxhp,'#d4283c','#ff7a8a');
+            bar(c,22,17,64,5,P.sp/100,'#2a7cff','#9fd8ff');
+            if(P.sp>=50&&((L.t>>3)&1)){c.fillStyle='#fff';c.fillRect(88,18,3,3);}
+            const b=G.boss;
+            if(b&&!b.dead&&b.hp>0)bar(c,W-150,8,140,6,b.hp/b.maxhp,'#a020c0','#e090ff');
+            if(!L.lock&&L.en.every(e=>e.dead)&&L.cam<L.len-W-2&&((L.t>>4)&1)){
+              c.font='bold 14px monospace';c.fillStyle='#fff';c.fillText('GO ▶',W-60,40);
+            }
+          }
+          function render(){
+            const c=ctx;c.clearRect(0,0,W,H);
+            if(!L){c.fillStyle='#000';c.fillRect(0,0,W,H);return;}
+            const cam=Math.round(L.cam);
+            c.save();
+            if(L.shake>0){
+              c.translate(((Math.random()*2-1)*L.shake*0.5)|0,((Math.random()*2-1)*L.shake*0.5)|0);
+              L.shake*=0.88;if(L.shake<0.5)L.shake=0;
+            }
+            drawBG(c,L.B,cam,L.t);
+            for(const e of L.en)drawEnemy(c,e,cam);
+            drawPlayer(c,cam);
+            for(const s of L.sh)drawShot(c,s,cam);
+            for(const q of L.pa){c.fillStyle=q.col;c.fillRect(Math.round(q.x-cam),Math.round(q.y),2,2);}
+            c.restore();
+            drawHUD(c);
+          }
+
+          /* ---------- التهيئة والحلقة الرئيسية ---------- */
+          const DUMMY=[
+          '....kkkk....',
+          '...khhhhk...',
+          '...khhhhk...',
+          '....kkkk....',
+          '.kkksssskkk.',
+          'khhhsSSshhhk',
+          'khhkskkskhhk',
+          '.kk.sSSs.kk.',
+          '....sSSs....',
+          '....sSSs....',
+          '....ssss....',
+          '....kHHk....',
+          '....kHHk....',
+          '....kHHk....',
+          '..kkkHHkkk..',
+          '.kHHHHHHHHk.',
+          '.kkkkkkkkkk.'];
+          const ORB=[
+          '..kkk..',
+          '.keeek.',
+          'keyyeek',
+          'keyyeek',
+          'keeeeek',
+          '.keeek.',
+          '..kkk..'];
+          function initEngine(){
+            initSprites();
+            S.dummy=mk(DUMMY);S.orb=mk(ORB);
+            bindInput();
+          }
+          let lastT=0,acc=0;
+          function loop(ts){
+            acc+=Math.min(100,ts-lastT);lastT=ts;
+            while(acc>=16.67){update();acc-=16.67;}
+            render();requestAnimationFrame(loop);
+          }
+          function startLoop(){requestAnimationFrame(t=>{lastT=t;loop(t);});}
+          EOF
+          cat > www/story.js <<'EOF'
+          'use strict';
+          /* ---------- بورتريهات الحوار بالبكسل (24x24 مكبّرة 2x) ---------- */
+          const FACE=[
+          '........kkkkkkkk........',
+          '......kkHHHHHHHHkk......',
+          '.....kHHHhHHHHhHHHk.....',
+          '....kHHhHHHHHHHHhHHk....',
+          '...kHHHHHHHHHHHHHHHHk...',
+          '...kHHHHfffffffffHHHk...',
+          '...kHHffffffffffffHHk...',
+          '...kHhffffffffffffhHk...',
+          '...kfweeffffffeewfffk...',
+          '...kffeeffffffeeffffk...',
+          '...kfffffffFFfffffffk...',
+          '....kffffffFFffffffk....',
+          '....kffffffffffffffk....',
+          '....kffffmmmmmmffffk....',
+          '.....kffffffffffffk.....',
+          '......kkffffffffkk......',
+          '.......kkkffffkkk.......',
+          '.........knnnnk.........',
+          '....kkkkknnnnkkkkk......',
+          '...kccccccnnnnccccck....',
+          '..kccCcccccccccccccCck..',
+          '.kcccccccccccccccccccck.',
+          '.kcccccccccccccccccccck.',
+          'kkkkkkkkkkkkkkkkkkkkkkkk'];
+          const CHAR={
+          nar:{n:''},
+          levi:{n:'ليفاي',H:'#f2f4ff',h:'#aab4dc',e:'#4fb0ff',w:'#e8f0ff',c:'#1b1b27',C:'#38384f',spike:1},
+          avian:{n:'أفيان',H:'#3c4054',h:'#8a90b0',e:'#3ac060',c:'#2a3a7a',C:'#4a5aa0',spike:1},
+          mira:{n:'ميرا',H:'#6b4226',h:'#4a2a14',e:'#d89a30',c:'#e8e8f0',C:'#b0b0c8',long:1},
+          darius:{n:'داريوس',H:'#3a2a22',h:'#241812',e:'#6a5a4a',f:'#d9a47a',F:'#a8744a',c:'#4a4a52',C:'#2e2e36',scar:1},
+          kyle:{n:'كايل',H:'#d8a030',h:'#a07018',e:'#c03030',c:'#5a2a2a',C:'#7a3a3a'},
+          elena:{n:'إيلينا',H:'#2a4a6a',h:'#1a3048',e:'#4a90a0',c:'#2a3a2a',C:'#3a5a3a',long:1},
+          ren:{n:'رين',H:'#5a3a2a',h:'#3a2418',e:'#a06030',c:'#303a50',C:'#485070',spike:1},
+          aldric:{n:'القائد ألدريك',H:'#7a7a82',h:'#4a4a52',e:'#807050',f:'#d8b090',F:'#a88060',c:'#5a4a3a',C:'#3a2e22',stub:1},
+          sup:{n:'المشرف',H:'#2a2a2a',h:'#161616',e:'#505060',c:'#2a3a4a',C:'#44566a'},
+          clerk:{n:'الموظف',H:'#9a9aa0',h:'#6a6a70',e:'#606060',f:'#e0bfa0',c:'#4a4a3a',C:'#2e2e22'},
+          stu:{n:'طالب',H:'#4a3020',h:'#2a1a10',e:'#704020',c:'#2a3a7a',C:'#4a5aa0'},
+          stu2:{n:'طالب',H:'#2a2a38',h:'#14141c',e:'#404060',c:'#2a3a7a',C:'#4a5aa0'},
+          woman:{n:'المرأة (إيلارا)',H:'#2a1a20',h:'#160c10',e:'#4a6a8a',c:'#8a3a3a',C:'#b05a5a',long:1},
+          divine:{n:'الرجل الغامض',H:'#e8e0f0',h:'#b8b0d0',e:'#ffffff',w:'#ffffff',f:'#f4e8f0',F:'#d8c8e0',c:'#f0f0f8',C:'#c8c8e0',bg:'#2a0a2a'},
+          old:{n:'العجوز',H:'#b0b0b8',h:'#80808a',e:'#404050',f:'#e0c0a0',c:'#2a2a3a',C:'#44445a'},
+          aide:{n:'المساعد',H:'#3a3a3a',h:'#202020',e:'#505050',c:'#2a2a3a',C:'#44445a'},
+          iskar:{n:'إيسكار',H:'#1a1a2a',h:'#0a0a14',e:'#c05aff',f:'#e8d8e8',F:'#c0a8c8',c:'#3a2a4a',C:'#5a4a6a',bg:'#1a0a2a'},
+          blade:{n:'صوت السيف',special:'eyes',e:'#3aa0ff'},
+          azrael:{n:'صوت غامض',special:'eyes',e:'#b050ff'}};
+          function drawPortrait(g,who){
+            const ch=CHAR[who];if(!ch)return;
+            g.fillStyle=ch.bg||'#161628';g.fillRect(0,0,48,48);
+            if(ch.special==='eyes'){
+              g.fillStyle='#050508';g.fillRect(4,4,40,40);
+              g.fillStyle=ch.e;g.fillRect(10,20,10,5);g.fillRect(28,20,10,5);
+              g.fillStyle='#ffffff';g.fillRect(13,21,4,2);g.fillRect(31,21,4,2);
+              g.fillStyle='rgba(60,160,255,0.25)';g.fillRect(8,17,14,11);g.fillRect(26,17,14,11);
+              return;
+            }
+            if(ch.long){
+              g.fillStyle=ch.H;g.fillRect(3,10,7,34);g.fillRect(38,10,7,34);
+              g.fillStyle=ch.h;g.fillRect(3,20,2,24);g.fillRect(43,20,2,24);
+            }
+            const fs=ch.f||'#f1c9a5';
+            const col={k:'#0a0a12',H:ch.H,h:ch.h,f:fs,F:ch.F||'#c28a70',e:ch.e,w:ch.w||'#ffffff',m:'#7a2a2a',c:ch.c,C:ch.C,n:fs};
+            for(let j=0;j<FACE.length;j++)for(let i=0;i<24;i++){
+              const k=FACE[j][i];if(k==='.'||!col[k])continue;
+              g.fillStyle=col[k];g.fillRect(i*2,j*2,2,2);
+            }
+            if(ch.spike){
+              g.fillStyle=ch.H;g.fillRect(10,0,4,3);g.fillRect(20,0,5,3);g.fillRect(31,0,4,3);
+              g.fillStyle='#0a0a12';g.fillRect(10,0,4,1);g.fillRect(20,0,5,1);g.fillRect(31,0,4,1);
+            }
+            if(ch.scar){g.fillStyle='#9a3a3a';ln(g,31,13,25,36,2);g.fillStyle='#d88a8a';ln(g,32,13,26,36,1);}
+            if(ch.stub){g.fillStyle='#8a7a6a';for(let i=0;i<26;i++)g.fillRect(12+((i*7)%24),29+((i*5)%7),1,1);}
+          }
+
+          /* ---------- الحوارات (من الوثيقة) ---------- */
+          const Q=(w,t)=>({w:w,t:t});
+          const D={};
+
+          /* الحلقة 1: الصبي الذي لا يريده أحد */
+          D.ep1a=[
+          Q('nar','أمطار غزيرة. فتاة تركض داخل ممر حجري وهي تحمل طفلاً رضيعاً... وخلفها رجل يقترب بخطوات بطيئة.'),
+          Q('divine','أعيدي الطفل.'),
+          Q('woman','لن أسمح لك بأخذه.'),
+          Q('divine','أنت تعرفين أنه ليس ملكاً للبشر.'),
+          Q('woman','إنه ابني.'),
+          Q('divine','إنه ليس بشرياً بالكامل.'),
+          Q('nar','تبدأ الأرض بالاهتزاز، وتظهر هالة سوداء خلف الرجل كأن السماء نفسها انفتحت.'),
+          Q('woman','ليفاي... مهما حدث... لا تسمح لهم بمعرفة حقيقتك.'),
+          Q('nar','بعد 18 عاماً.')];
+          D.ep1b=[
+          Q('nar','أكاديمية أركاديا العسكرية. مئات الطلاب في ساحة الاختبار.'),
+          Q('sup','اليوم هو يوم التوزيع الرسمي للأسلحة الملعونة. كل طالب سيخضع لاختبار التوافق.'),
+          Q('stu','انظروا، إنه ليفاي.'),
+          Q('stu2','هل ما زال يحاول الحصول على سلاح؟ سمعت أنه فشل في سبعة اختبارات.'),
+          Q('stu','ربما سيعطونه مكنسة بدلاً من السلاح.'),
+          Q('levi','...'),
+          Q('sup','ليفاي! تقدم. ضع يدك عليها.'),
+          Q('levi','وماذا لو انفجرت؟'),
+          Q('sup','لا تكن سخيفاً.'),
+          Q('nar','يضع ليفاي يده. ثانية... ثانيتان. ثم يبدأ الجهاز بالاهتزاز وتظهر أرقام غريبة.'),
+          Q('sup','ما هذا؟ أبعد يدك!'),
+          Q('nar','تنكسر القطعة المعدنية من المنتصف. يصمت الجميع.'),
+          Q('stu','هاهاها! حتى الجهاز رفضه!'),
+          Q('nar','لكن المشرف لا يضحك. لقد رأى كلمة واحدة على الشاشة قبل انطفائها: DIVINE.'),
+          Q('levi','هل انتهينا؟'),
+          Q('sup','نعم.'),
+          Q('levi','جيد. كنت أريد النوم.')];
+          D.ep1c=[
+          Q('nar','في غرفة مراقبة سرية، يجلس رجل عجوز أمام بيانات الاختبار.'),
+          Q('old','مستحيل...'),
+          Q('aide','ما الأمر؟'),
+          Q('old','هذا التردد... لم يظهر منذ الحرب القديمة.'),
+          Q('aide','هل نبلغ المجلس؟'),
+          Q('old','لا.'),
+          Q('old','إذا عرف المجلس أنه عاد... فسوف يقتلون الصبي قبل أن يفهموا ما هو.')];
+
+          /* الحلقة 2: فرقة الفاشلين */
+          D.ep2a=[
+          Q('clerk','ليفاي، بسبب نتائجك، تم استبعادك من الفرق الست الأولى. وسيتم تحويلك إلى الخدمات أو الحراسة.'),
+          Q('levi','لا أريد ذلك.'),
+          Q('clerk','إذن أمامك خيار واحد. فرقة إيلاريون.'),
+          Q('levi','ما هي؟'),
+          Q('clerk','فرقة صغيرة... لا تحقق نتائج جيدة. إنها أسوأ فرقة في الأكاديمية.'),
+          Q('levi','إذن مناسبة لي.')];
+          D.ep2b=[
+          Q('nar','مبنى الفرقة: جدران متشققة، ولافتة مائلة. شاب نائم على الطاولة، وآخر يأكل، وشابة تقرأ.'),
+          Q('avian','من أنت؟'),
+          Q('levi','الشخص الذي سيغادر إذا كانت هذه غرفة النوم.'),
+          Q('avian','أوه! أنت العضو الجديد؟'),
+          Q('levi','للأسف.'),
+          Q('avian','أنا أفيان! وهذا رين، وهذه إيلينا.'),
+          Q('ren','أهلاً بالفاشل الجديد.'),
+          Q('elena','رين، اصمت.'),
+          Q('avian','لا تهتم به. هو هكذا دائماً.'),
+          Q('levi','لاحظت.'),
+          Q('darius','من الذي يتحدث؟ أنت العضو الجديد؟'),
+          Q('levi','على ما يبدو.'),
+          Q('darius','هل تستطيع القتال؟'),
+          Q('levi','أستطيع المحاولة.'),
+          Q('darius','لا أريد المحاولة. أريد نتيجة.'),
+          Q('levi','إذن ربما عليك البحث عن شخص آخر.'),
+          Q('ren','هذا الصبي سيموت في أول تدريب.')];
+
+          /* الحلقة 3: الاختبار الأول */
+          D.ep3a=[
+          Q('darius','اختباركم اليوم بسيط. عليكم إسقاط هدف متحرك خلال خمس دقائق.'),
+          Q('nar','أفيان يهاجم بسيفه، رين بخنجريه، إيلينا تطلق سهمها... لكن الهدف سريع.'),
+          Q('darius','مثير للشفقة.'),
+          Q('avian','كان أسرع مما توقعت!'),
+          Q('darius','في الخارج لن يخبرك العدو متى سيهاجم. دورك يا ليفاي.'),
+          Q('darius','أين سلاحك؟'),
+          Q('levi','ليس لدي واحد. أخبروني أنني لا أملك توافقاً.'),
+          Q('darius','إذن لماذا أنت هنا؟'),
+          Q('levi','اسأل الإدارة.'),
+          Q('darius','أنت تعتقد أن القتال مجرد حركة؟'),
+          Q('levi','لا. أن تعرف متى لا يجب أن تقاتل.'),
+          Q('darius','أسقطه.')];
+          D.ep3b=[
+          Q('nar','ينحني ليفاي خطوة واحدة، ويضرب نقطة محددة خلف مفصل الهدف. يسقط المجسم فوراً.'),
+          Q('darius','كيف عرفت نقطة ضعفه؟'),
+          Q('levi','كانت واضحة.'),
+          Q('ren','مستحيل. لم أرها.'),
+          Q('levi','ربما عليك فتح عينيك.'),
+          Q('avian','هاهاها!'),
+          Q('nar','داريوس لا يبتسم. لكنه يبدأ بالاهتمام بهذا الفتى.')];
+
+          /* الحلقة 4: السلاح الذي نادى باسمه */
+          D.ep4a=[
+          Q('nar','منتصف الليل. يستيقظ ليفاي على صوت خافت.'),
+          Q('blade','...ليفاي.'),
+          Q('nar','يمشي في الممرات حتى الطابق السفلي، حيث مستودعات الأسلحة القديمة. بابٌ مفتوح.'),
+          Q('nar','سيف أسود لا يعكس الضوء، على مقبضه رموز غير مفهومة.')];
+          D.ep4b=[
+          Q('blade','لقد تأخرت.'),
+          Q('levi','من هناك؟'),
+          Q('blade','أنت...'),
+          Q('blade','دم الملك... عاد.'),
+          Q('nar','يتحطم الزجاج. تندفع طاقة سوداء من السلاح إلى جسد ليفاي. عرش ضخم... سماء مكسورة... شخص بتاج أسود.'),
+          Q('azrael','لا تدع ابني يتذكر.')];
+          D.ep4c=[
+          Q('mira','أخيراً استيقظت.'),
+          Q('levi','أين أنا؟'),
+          Q('mira','في المستشفى. لقد وجدوك فاقداً للوعي في المستودع. يوم كامل!'),
+          Q('mira','لا تتحرك! أنت لا تبدو بخير.'),
+          Q('levi','وأنت تتكلمين كثيراً.'),
+          Q('mira','وأنت مريض مزعج.'),
+          Q('avian','ليفاي! أيها الغبي! هل تريد قتل نفسك؟'),
+          Q('levi','كنت أفكر في ذلك، لكن يبدو أنك سبقتني.'),
+          Q('nar','خلف باب الغرفة يقف داريوس. لقد رأى السيف... ويعرف اسمه. النصل الأول.')];
+
+          /* الحلقة 5: أول مهمة خارج الجدران */
+          D.ep5a=[
+          Q('darius','المهمة مصنفة D. لكن لا تثقوا بالتصنيف دائماً. بعض المناطق تتغير بعد مرور السايركس.'),
+          Q('avian','هذه أول مرة أخرج فيها من الجدران.'),
+          Q('ren','حاول ألا تموت في أول ساعة.'),
+          Q('avian','أنت آخر شخص يحق له الكلام.'),
+          Q('elena','اصمتما. هناك حركة أمامنا.')];
+          D.ep5b=[
+          Q('nar','يسمعون صوت طفل يبكي. فتاة صغيرة بين الأنقاض.'),
+          Q('avian','هناك طفلة!'),
+          Q('darius','توقف!'),
+          Q('nar','الطفلة ترفع رأسها. وجهها مشوّه، وتخرج من ظهرها أطراف طويلة. إنها سايركس متنكرة!'),
+          Q('levi','انبطح!')];
+          D.ep5c=[
+          Q('blade','دعني أخرج.'),
+          Q('nar','يطفو النصل الأول في الهواء، ويهبط في يد ليفاي. تتوهج عيناه بالأزرق.'),
+          Q('avian','ليفاي... ما هذا السلاح؟'),
+          Q('levi','لا أعرف.'),
+          Q('darius','هذا مستحيل...')];
+
+          /* الحلقة 6: الرجل الذي يعرف الحقيقة */
+          D.ep6=[
+          Q('aldric','أرني السلاح.'),
+          Q('nar','ينظر ألدريك إلى النصل طويلاً، ثم يضحك ضحكة خافتة.'),
+          Q('aldric','لقد وجدك أخيراً.'),
+          Q('levi','هل تعرفه؟'),
+          Q('aldric','أعرف ما يكفي لأخاف منه.'),
+          Q('levi','أريد إجابة.'),
+          Q('aldric','هذا السلاح لا ينتمي إلى البشر. إنه ينتمي إلى الآلهة.'),
+          Q('aldric','اسمع جيداً. لا تخبر أحداً عن هذا السلاح. لا المجلس، ولا حتى أعضاء فرقتك.'),
+          Q('levi','لماذا؟'),
+          Q('aldric','لأنهم لن يروا فيك طالباً يحمل سلاحاً. سيرون سلاحاً يرتدي جسد إنسان.')];
+
+          /* الحلقات 7–9: دماء خارج التصنيف */
+          D.ep7=[
+          Q('nar','تبدأ فرقة إيلاريون بالتدريب. ليفاي يحاول فهم النصل الأول، لكنه لا يستطيع السيطرة عليه. كلما استخدمه ظهرت علامات سوداء على ذراعه.'),
+          Q('mira','جسده لا يتعامل مع الإيثير بالطريقة المعتادة... سأفحص عينة من دمه.'),
+          Q('nar','وفي إحدى الليالي تجد ميرا نتيجة مخيفة: دم ليفاي يحتوي على مكونات بشرية، ومكونات سايركس لا تنتمي إلى أي تصنيف معروف.'),
+          Q('mira','DIVINE HYBRID... لا يجب أن يرى أحد هذا التقرير.'),
+          Q('nar','تخفي التقرير. لكن أحد أعضاء المجلس يسرقه.')];
+
+          /* الحلقات 10–12: مدينة الأقنعة */
+          D.ep10=[
+          Q('nar','مدينة مهجورة يقال إن السايركس البشرية تعيش فيها. هناك يلتقون بشخص يبدو كإنسان طبيعي.'),
+          Q('iskar','أعرف أسماءكم جميعاً. أنا إيسكار.'),
+          Q('iskar','السايركس لم تأتِ جميعها لتدمير البشر. بعضها جاء هرباً من شيء أكبر... شيء يعيش خلف عالم الآلهة.'),
+          Q('nar','لكن قبل أن يكشف المزيد، يهاجم المدينة كيان مجهول.')];
+          D.ep10b=[
+          Q('avian','أخي؟! كنت أظنك مفقوداً منذ سنوات!'),
+          Q('nar','يفقد أفيان أخاه في لحظات. وتتحول المهمة إلى معركة من أجل النجاة.')];
+
+          /* الحلقات 13–15: سقوط إيلاريون */
+          D.ep13=[
+          Q('nar','تتعرض قاعدة الفرقة لهجوم من عملاق سايركس بطول 90 متراً. اسمه: كارثوس.'),
+          Q('darius','ابتعدوا! سأوقفه بمطرقة القبر!'),
+          Q('nar','داريوس يوقف العملاق مؤقتاً، لكنه يصاب إصابة خطيرة.')];
+          D.ep13b=[
+          Q('nar','يحاول ليفاي استخدام النصل الأول، لكن السلاح يرفض الاستجابة.'),
+          Q('blade','أنت لا تعرف من أنت.'),
+          Q('levi','اصمت.'),
+          Q('blade','أنت تخاف من نفسك.'),
+          Q('levi','قلت اصمت!'),
+          Q('nar','للمرة الأولى تظهر خلف ليفاي هالة سوداء.')];
+          D.ep13c=[
+          Q('nar','يقطع ذراع العملاق... لكن جسده يبدأ بالتحطم.'),
+          Q('avian','لا تمت أيها الأحمق! لم أنتهِ من إزعاجك بعد!')];
+
+          /* الحلقات 16–18: حقيقة الأم */
+          D.ep16=[
+          Q('nar','ميرا وألدريك يبحثان في تاريخ ليفاي. ملف قديم يعود إلى ما قبل ولادته، فيه صورة امرأة شابة: إيلارا.'),
+          Q('mira','كانت باحثة بشرية تدرس السايركس. اختفت في ليلة الانهيار الثاني.'),
+          Q('aldric','والد ليفاي لم يكن بشرياً. كان إلهاً من الطبقة العليا. اسمه: أزراييل، ملك الفراغ.'),
+          Q('mira','والأخطر... أن ليفاي يحمل جزءاً من جوهره.')];
+
+          /* المشهد الأخير من الموسم الأول */
+          D.finale=[
+          Q('nar','ليل. أرض مدمرة. سماء حمراء. ليفاي وحيد فوق برج محطم، والنصل الأول في يده.'),
+          Q('aldric','هل تعرف لماذا سُمّيت فرقتك إيلاريون؟'),
+          Q('levi','لا.'),
+          Q('aldric','كان هناك اسم قديم قبل الانهيار. إيلاريون كان يعني في لغة الحضارة الأولى... آخر ضوء قبل الظلام.'),
+          Q('levi','اسم مبالغ فيه.'),
+          Q('aldric','ربما. هل تعرف ما الذي حدث لوالدك؟'),
+          Q('levi','أنت تعرف؟'),
+          Q('aldric','أعرف أنه لم يمت.'),
+          Q('nar','في السماء البعيدة تظهر شقوق سوداء، ومن داخلها ينظر وجه بشري ضخم. جميل... مرعب... بلا تعبير.'),
+          Q('azrael','ابني...'),
+          Q('azrael','لقد كبرت.')];
+          EOF
+          cat > www/game.js <<'EOF'
+          'use strict';
+          function outlineCv(cv){
+            const w=cv.width,h=cv.height,c=cv.getContext('2d'),d=c.getImageData(0,0,w,h).data;
+            const on=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&d[(y*w+x)*4+3]>0;
+            const add=[];
+            for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+              if(!on(x,y)&&(on(x-1,y)||on(x+1,y)||on(x,y-1)||on(x,y+1)))add.push(x,y);
+            }
+            c.fillStyle='#0a0a12';
+            for(let i=0;i<add.length;i+=2)c.fillRect(add[i],add[i+1],1,1);
+          }
+
+          /* ---------- كارثوس: عملاق سايركس (90 متراً) ---------- */
+          function buildKarthus(){
+            const r=rng(777),c=mkc(120,112);
+            const cols=['#9aae9b','#8fa291','#6a7c70','#4e5c54'];
+            const pick=()=>cols[r()<0.15?3:r()<0.4?2:1];
+            for(let y=26;y<84;y++){
+              const t=(y-26)/58,hw=Math.round(lerp(52,30,t)+Math.sin(y*0.7)*2);
+              for(let x=60-hw;x<=60+hw;x++){
+                c.fillStyle=x<60-hw+3?cols[0]:pick();c.fillRect(x,y,1,1);
+              }
+            }
+            c.fillStyle='#e0d8b4';
+            for(let i=0;i<4;i++){
+              const y=34+i*7;
+              for(let x=40;x<=80;x++){const yy=y+Math.round(Math.abs(x-60)/8);if((x&1)||i%2)c.fillRect(x,yy,1,2);}
+            }
+            c.fillStyle='#2a0c14';c.fillRect(46,62,28,12);
+            c.fillStyle='#e0d8b4';
+            for(let x=46;x<74;x+=3){c.fillRect(x,62,2,4);c.fillRect(x+1,70,2,4);}
+            c.fillStyle='#7a1a2a';c.fillRect(34,50,8,2);c.fillRect(80,44,6,2);
+            for(let s=0;s<2;s++){
+              const lx=s?66:28;
+              for(let y=84;y<112;y++)for(let x=lx;x<lx+26;x++){
+                if(y>108&&(x<lx+2||x>lx+23))continue;
+                c.fillStyle=pick();c.fillRect(x,y,1,1);
+              }
+            }
+            for(let y=0;y<28;y++){
+              const hw=Math.round(18-Math.pow((y-14)/14,2)*6);
+              for(let x=60-hw;x<=60+hw;x++){c.fillStyle=pick();c.fillRect(x,y,1,1);}
+            }
+            c.fillStyle='#ff3a3a';c.fillRect(48,8,6,5);c.fillRect(67,8,6,5);
+            c.fillStyle='#fff';c.fillRect(50,9,2,2);c.fillRect(69,9,2,2);
+            c.fillStyle='#2a0c14';c.fillRect(49,18,23,7);
+            c.fillStyle='#e0d8b4';
+            for(let x=49;x<72;x+=3){c.fillRect(x,18,2,3);c.fillRect(x+1,22,2,3);}
+            outlineCv(c.cv);
+            return c.cv;
+          }
+          function buildKarm(){
+            const r=rng(555),c=mkc(22,74);
+            const cols=['#9aae9b','#8fa291','#6a7c70','#4e5c54'];
+            for(let y=0;y<58;y++){
+              const hw=Math.round(10-y*0.04);
+              for(let x=11-hw;x<=11+hw;x++){c.fillStyle=cols[x<11-hw+2?0:(r()<0.2?3:r()<0.45?2:1)];c.fillRect(x,y,1,1);}
+            }
+            c.fillStyle='#e0d8b4';
+            for(let k=0;k<3;k++){const bx=4+k*7;for(let y=0;y<14;y++){c.fillRect(bx+Math.round((1-y/14)*2),58+y,Math.max(1,3-Math.floor(y/5)),1);}}
+            outlineCv(c.cv);
+            return c.cv;
+          }
+          ET.karthus={hp:60,w:70,h:100,heavy:1,
+            ai(e){
+              const dx=P.x-e.x,ad=Math.abs(dx),en=e.hp<e.maxhp*0.5;
+              e.d=dx>0?1:-1;
+              if(!e.half&&en){e.half=true;say(D.ep13b);}
+              if(P.dead)return;
+              if(e.st==='walk'||e.st==='idle'){
+                if(ad>50)e.x+=e.d*(en?0.5:0.3);
+                e.cd--;
+                if(e.cd<=0){e.st=ad<85?'stomp':'slam';e.at=0;}
+              }else if(e.st==='slam'){
+                e.at++;
+                if(e.at===40){
+                  L.sh.push({x:e.x+e.d*46,y:GY-6,vx:e.d*(en?3.6:2.6),d:e.d,dmg:2,life:170,own:'e',type:'orb'});
+                  sfx('boom');L.shake=10;
+                }
+                if(e.at>62){e.st='walk';e.cd=en?55:105;}
+              }else if(e.st==='stomp'){
+                e.at++;
+                if(e.at===35){
+                  if(ad<95&&P.y>=GY-10)hurtPlayer(2,e.x);
+                  sfx('boom');L.shake=12;burst(e.x+e.d*20,GY-4,20,['#6a7c70','#9aae9b','#e0d8b4'],3);
+                }
+                if(e.at>56){e.st='walk';e.cd=75;}
+              }
+            },
+            draw(c,e,cam){
+              c.save();c.translate(Math.round(e.x-cam),Math.round(e.y));c.scale(e.d,1);
+              if(e.fl>0)c.filter='brightness(2.6)';
+              const bob=Math.round(Math.sin(e.t*0.05));
+              c.save();c.translate(-46,-80+bob);c.rotate(0.15+Math.sin(e.t*0.04)*0.08);c.drawImage(S.karm,-11,0);c.restore();
+              c.drawImage(S.kbody,-60,-112+bob);
+              let th=0.1+Math.sin(e.t*0.04)*0.06;
+              if(e.st==='slam'){
+                if(e.at<35)th=-2.8*(e.at/35);
+                else if(e.at<45)th=lerp(-2.8,-0.5,(e.at-35)/10);
+                else th=-0.5;
+              }else if(e.st==='stomp')th=-0.9*Math.min(1,e.at/30);
+              c.save();c.translate(46,-80+bob);c.rotate(th);c.drawImage(S.karm,-11,0);c.restore();
+              c.restore();
+            }};
+
+          /* ---------- الحلقات والمراحل ---------- */
+          let EPI=0;
+          function setArmed(b){G.armed=b;S.lsword=b?S.swordReal:S.blank;}
+          const _sf=slashFx;slashFx=function(){if(G.armed)_sf.apply(null,arguments);};
+          retryLevel=function(){L.def.retry=1;startLevel(L.def);};
+          function nextEp(){EPI++;startEpisode(EPI);}
+          const first=()=>!L.def.retry;
+          const hol=n=>{const a=[];for(let i=0;i<n;i++)a.push({type:'hollow',dx:i*14});return a;};
+
+          const EP=[
+          {card:['الحلقة 1 - 2','الصبي الذي لا يريده أحد'],def:{theme:0,seed:3,len:1100,px:40,music:0,armed:false,
+            onStart(){if(first())say(D.ep1a,()=>say(D.ep1b,()=>say(D.ep1c)));},
+            trig:[{x:700,fn(){say(D.ep2a);}}],
+            onEnd(){say(D.ep2b,()=>nextEp());}}},
+          {card:['الحلقة 3','الاختبار الأول'],def:{theme:0,seed:5,len:W,px:40,music:0,armed:false,
+            onStart(){if(first())say(D.ep3a);},
+            locks:[{x:0,wave:[{type:'dummy',dx:0},{type:'dummy',dx:60},{type:'dummy',dx:120}],onClear(){say(D.ep3b,()=>nextEp());}}]}},
+          {card:['الحلقة 4','السلاح الذي نادى باسمه'],def:{theme:3,seed:9,len:1100,px:40,music:0,armed:false,
+            onStart(){if(first())say(D.ep4a);},
+            locks:[{x:560,wave:hol(2),onStart(){say(D.ep4b,()=>setArmed(true));}}],
+            onEnd(){say(D.ep4c,()=>nextEp());}}},
+          {card:['الحلقة 5 - 6','أول مهمة خارج الجدران'],def:{theme:1,seed:11,len:1800,px:40,music:1,armed:true,
+            onStart(){if(first())say(D.ep5a);},
+            spawns:[{type:'hollow',x:420},{type:'hollow',x:520},{type:'hollow',x:640},{type:'hollow',x:700}],
+            locks:[{x:900,wave:hol(3)},{x:1300,wave:hol(3),onStart(){say(D.ep5b);},onClear(){say(D.ep5c);}}],
+            onEnd(){say(D.ep6,()=>nextEp());}}},
+          {card:['الحلقات 7 - 12','دماء خارج التصنيف · مدينة الأقنعة'],def:{theme:2,seed:14,len:2000,px:40,music:1,armed:true,
+            onStart(){if(first())say(D.ep7);},
+            spawns:[{type:'hollow',x:380},{type:'hollow',x:500},{type:'hollow',x:620},{type:'hollow',x:760},{type:'hollow',x:820}],
+            locks:[{x:1000,wave:hol(4),onClear(){say(D.ep10);}},{x:1500,wave:hol(5),onClear(){say(D.ep10b);}}],
+            onEnd(){nextEp();}}},
+          {card:['الحلقات 13 - 15','سقوط إيلاريون'],def:{theme:1,seed:17,len:W,px:60,music:1,armed:true,
+            onStart(){if(first())say(D.ep13);},
+            locks:[{x:0,wave:[{type:'karthus',boss:true}],onClear(){say(D.ep13c,()=>nextEp());}}]}},
+          {card:['الحلقات 16 - 18','حقيقة الأم'],def:{theme:2,seed:21,len:800,px:40,music:0,armed:true,
+            onStart(){if(first())say(D.ep16);},
+            onEnd(){nextEp();}}},
+          {card:['خاتمة الموسم الأول','الوريث الذي كرهته الآلهة'],def:{theme:3,seed:25,len:W,px:200,music:0,armed:true,
+            onStart(){if(first())say(D.finale,()=>{music(-1);showCard('TO BE CONTINUED...','ILARION — نهاية الموسم الأول',6000,()=>location.reload());});}}}];
+
+          function startEpisode(i){
+            const e=EP[i];if(!e)return;
+            if(i===5&&!S.kbody){S.kbody=buildKarthus();S.karm=buildKarm();}
+            showCard(e.card[0],e.card[1],2600,()=>{
+              e.def.retry=0;setArmed(e.def.armed!==false);startLevel(e.def);
+            });
+          }
+          function boot(){
+            initEngine();
+            S.swordReal=S.lsword;S.blank=mkc(1,1).cv;
+            S.kbody=buildKarthus();S.karm=buildKarm();
+            startLoop();
+            $('startBtn').addEventListener('click',()=>{
+              initAudio();$('title').style.display='none';EPI=0;startEpisode(0);
+            });
+          }
+          boot();
+          EOF
+      - name: Setup Capacitor and Android
+        run: |
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          cat > capacitor.config.json <<'EOF'
+          {"appId":"com.levi.ilarion","appName":"ILARION","webDir":"www"}
+          EOF
+          npx cap add android
+          sed -i 's/<activity/<activity android:screenOrientation="sensorLandscape"/' android/app/src/main/AndroidManifest.xml
+          npx cap sync android
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ilarion-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
